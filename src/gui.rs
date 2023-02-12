@@ -9,6 +9,7 @@ use self::application::Application;
 use self::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
 
 pub fn main() {
+    dbg("test");
     // Initialize logger
     pretty_env_logger::init();
 
