@@ -11,3 +11,8 @@ pub mod gui;
 pub mod i18n;
 pub mod ui;
 pub mod utils;
+
+
+fn main() {
+    gui::main();
+}

@@ -1,8 +1,7 @@
-use anyhow::{anyhow, bail, Context, Result};
-use config::LIBEXECDIR;
+use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use log::debug;
-use nix::{sys::signal, unistd::Pid};
+use nix::{sys::signal::Signal, unistd::Pid};
 use once_cell::sync::OnceCell;
 use std::{collections::HashMap, path::PathBuf, process::Command, time::SystemTime};
 
@@ -11,7 +10,7 @@ use gtk::{
     prelude::AppInfoExt,
 };
 
-use crate::{config, i18n::i18n};
+use crate::i18n::i18n;
 
 static PAGESIZE: OnceCell<usize> = OnceCell::new();
 
@@ -66,7 +65,7 @@ pub struct SimpleItem {
 
 #[derive(Debug, Clone, Default)]
 pub struct Apps {
-    apps: HashMap<String, App>,
+    pub apps: HashMap<String, App>,
     system_processes: Vec<Process>,
     known_proc_paths: Vec<PathBuf>,
 }
@@ -146,150 +145,6 @@ impl Process {
         }
     }
 
-    /// Terminates the processes
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if there are problems terminating the process
-    /// that running it with superuser permissions can't solve
-    pub fn term(&self) -> Result<()> {
-        debug!("sending SIGTERM to pid {}", self.pid);
-        let result = signal::kill(Pid::from_raw(self.pid), Some(signal::Signal::SIGTERM));
-        if let Err(err) = result {
-            return match err {
-                nix::errno::Errno::EPERM => self.pkexec_term(),
-                _ => bail!("unable to term {}", self.pid),
-            };
-        }
-        Ok(())
-    }
-
-    fn pkexec_term(&self) -> Result<()> {
-        debug!(
-            "using pkexec to send SIGTERM with root privileges to pid {}",
-            self.pid
-        );
-        let path = format!("{LIBEXECDIR}/resources-kill");
-        Command::new("pkexec")
-            .args([
-                "--disable-internal-agent",
-                &path,
-                "TERM",
-                self.pid.to_string().as_str(),
-            ])
-            .spawn()
-            .map(|_| ())
-            .with_context(|| format!("failure calling {} on {} (with pkexec)", &path, self.pid))
-    }
-
-    /// Kills the process
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if there are problems killing the process
-    /// that running it with superuser permissions can't solve
-    pub fn kill(&self) -> Result<()> {
-        debug!("sending SIGKILL to pid {}", self.pid);
-        let result = signal::kill(Pid::from_raw(self.pid), Some(signal::Signal::SIGKILL));
-        if let Err(err) = result {
-            return match err {
-                nix::errno::Errno::EPERM => self.pkexec_kill(),
-                _ => bail!("unable to kill {}", self.pid),
-            };
-        }
-        Ok(())
-    }
-
-    fn pkexec_kill(&self) -> Result<()> {
-        debug!(
-            "using pkexec to send SIGKILL with root privileges to pid {}",
-            self.pid
-        );
-        let path = format!("{LIBEXECDIR}/resources-kill");
-        Command::new("pkexec")
-            .args([
-                "--disable-internal-agent",
-                &path,
-                "KILL",
-                self.pid.to_string().as_str(),
-            ])
-            .spawn()
-            .map(|_| ())
-            .with_context(|| format!("failure calling {} on {} (with pkexec)", &path, self.pid))
-    }
-
-    /// Stops the process
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if there are problems stopping the process
-    /// that running it with superuser permissions can't solve
-    pub fn stop(&self) -> Result<()> {
-        debug!("sending SIGSTOP to pid {}", self.pid);
-        let result = signal::kill(Pid::from_raw(self.pid), Some(signal::Signal::SIGSTOP));
-        if let Err(err) = result {
-            return match err {
-                nix::errno::Errno::EPERM => self.pkexec_stop(),
-                _ => bail!("unable to stop {}", self.pid),
-            };
-        }
-        Ok(())
-    }
-
-    fn pkexec_stop(&self) -> Result<()> {
-        debug!(
-            "using pkexec to send SIGSTOP with root privileges to pid {}",
-            self.pid
-        );
-        let path = format!("{LIBEXECDIR}/resources-kill");
-        Command::new("pkexec")
-            .args([
-                "--disable-internal-agent",
-                &path,
-                "STOP",
-                self.pid.to_string().as_str(),
-            ])
-            .spawn()
-            .map(|_| ())
-            .with_context(|| format!("failure calling {} on {} (with pkexec)", &path, self.pid))
-    }
-
-    /// Continues the processes
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if there are problems continuing the process
-    /// that running it with superuser permissions can't solve
-    pub fn cont(&self) -> Result<()> {
-        debug!("sending SIGCONT to pid {}", self.pid);
-        let result = signal::kill(Pid::from_raw(self.pid), Some(signal::Signal::SIGCONT));
-        if let Err(err) = result {
-            return match err {
-                nix::errno::Errno::EPERM => self.pkexec_cont(),
-                _ => bail!("unable to cont {}", self.pid),
-            };
-        }
-        Ok(())
-    }
-
-    fn pkexec_cont(&self) -> Result<()> {
-        debug!(
-            "using pkexec to send SIGCONT with root privileges to pid {}",
-            self.pid
-        );
-        let path = format!("{LIBEXECDIR}/resources-kill");
-        Command::new("pkexec")
-            .args([
-                "--disable-internal-agent",
-                &path,
-                "CONT",
-                self.pid.to_string().as_str(),
-            ])
-            .spawn()
-            .map(|_| ())
-            .with_context(|| format!("failure calling {} on {} (with pkexec)", &path, self.pid))
-    }
-
     #[must_use]
     pub fn cpu_time_ratio(&self) -> f32 {
         if self.cpu_time_before == 0 {
@@ -356,6 +211,17 @@ impl Process {
 }
 
 impl App {
+    pub fn signal(&self, signal: Signal) -> Vec<Result<(), anyhow::Error>> {
+        let mut rets = vec![];
+
+        for pid in self.processes.keys() {
+            let ret = crate::utils::processes::signal(*pid, signal);
+            rets.push(ret);
+        }
+
+        rets
+    }
+
     /// Adds a process to the processes `HashMap` and also
     /// updates the `Process`' icon to the one of this
     /// `App`
@@ -476,30 +342,6 @@ impl App {
                 / (self.cpu_time_timestamp() - self.cpu_time_before_timestamp()) as f32)
                 .clamp(0.0, 1.0)
         }
-    }
-
-    #[must_use]
-    pub fn term(&self) -> Vec<Result<()>> {
-        debug!("sending SIGTERM to processes of {}", self.display_name());
-        self.processes.values().map(Process::term).collect()
-    }
-
-    #[must_use]
-    pub fn kill(&self) -> Vec<Result<()>> {
-        debug!("sending SIGKILL to processes of {}", self.display_name());
-        self.processes.values().map(Process::kill).collect()
-    }
-
-    #[must_use]
-    pub fn stop(&self) -> Vec<Result<()>> {
-        debug!("sending SIGSTOP to processes of {}", self.display_name());
-        self.processes.values().map(Process::stop).collect()
-    }
-
-    #[must_use]
-    pub fn cont(&self) -> Vec<Result<()>> {
-        debug!("sending SIGCONT to processes of {}", self.display_name());
-        self.processes.values().map(Process::cont).collect()
     }
 }
 
@@ -730,4 +572,32 @@ impl Apps {
         }
         Ok(())
     }
+}
+
+pub fn signal(pid: i32, signal: Signal) -> Result<(), anyhow::Error> {
+    debug!("Sending signal {signal} to pid {pid}");
+
+    match nix::sys::signal::kill(Pid::from_raw(pid), signal) {
+        Ok(_) => Ok(()),
+        Err(_) => pkexec_signal(pid, signal),
+    }
+}
+
+pub fn pkexec_signal(pid: i32, signal: Signal) -> Result<(), anyhow::Error> {
+    debug!("Using pkexec to send {signal} with root privileges to pid {pid}");
+
+    let pid = pid.to_string();
+    let signal = signal.as_str();
+
+    // e.g. pkexec /usr/bin/kill -s SIGKILL 2389
+    Command::new("pkexec")
+        .arg("/usr/bin/kill")
+        .args(["-s", signal])
+        .arg(&pid)
+        .spawn()
+        .map_err(|_| {
+            anyhow!("Could not send signal {signal} to process with pid {pid} as root.")
+        })?;
+
+    Ok(())
 }

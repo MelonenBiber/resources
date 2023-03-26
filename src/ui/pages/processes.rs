@@ -4,13 +4,14 @@ use adw::{prelude::*, subclass::prelude::*};
 use adw::{ResponseAppearance, Toast};
 use gtk::glib::{self, clone, timeout_future_seconds, BoxedAnyObject, MainContext, Object};
 use gtk::{gio, CustomSorter, FilterChange, Ordering, SortType};
+use nix::sys::signal::Signal;
 
 use crate::config::PROFILE;
 use crate::i18n::{i18n, i18n_f};
 use crate::ui::dialogs::process_dialog::ResProcessDialog;
 use crate::ui::widgets::process_name_cell::ResProcessNameCell;
 use crate::ui::window::MainWindow;
-use crate::utils::processes::{self, Apps, Process};
+use crate::utils::processes::{self, signal, Apps, Process};
 use crate::utils::units::{to_largest_unit, Base};
 
 mod imp {
@@ -511,7 +512,7 @@ impl ResProcesses {
             dialog.connect_response(None, clone!(@strong process, @weak self as this => move |_, response| {
                 if response == "yes" {
                     let imp = this.imp();
-                    match process.term() {
+                    match signal(process.pid, Signal::SIGTERM) {
                         Ok(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("Successfully ended {}", &[&process.comm]))); },
                         Err(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("There was a problem ending {}", &[&process.comm]))); },
                     };
@@ -538,7 +539,7 @@ impl ResProcesses {
             dialog.connect_response(None, clone!(@strong process, @weak self as this => move |_, response| {
                 if response == "yes" {
                     let imp = this.imp();
-                    match process.kill() {
+                    match signal(process.pid, Signal::SIGKILL) {
                         Ok(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("Successfully killed {}", &[&process.comm]))); },
                         Err(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("There was a problem killing {}", &[&process.comm]))); },
                     };
@@ -565,7 +566,7 @@ impl ResProcesses {
             dialog.connect_response(None, clone!(@strong process, @weak self as this => move |_, response| {
                 if response == "yes" {
                     let imp = this.imp();
-                    match process.stop() {
+                    match signal(process.pid, Signal::SIGSTOP) {
                         Ok(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("Successfully halted {}", &[&process.comm]))); },
                         Err(_) => { imp.toast_overlay.add_toast(Toast::new(&i18n_f("There was a problem halting {}", &[&process.comm]))); },
                     };
@@ -579,7 +580,7 @@ impl ResProcesses {
         let imp = self.imp();
         let selection_option = self.get_selected_process();
         if let Some(process) = selection_option {
-            match process.cont() {
+            match signal(process.pid, Signal::SIGCONT) {
                 Ok(_) => {
                     imp.toast_overlay.add_toast(Toast::new(&i18n_f(
                         "Successfully continued {}",
