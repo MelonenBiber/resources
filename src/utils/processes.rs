@@ -48,6 +48,15 @@ pub struct App {
     app_info: AppInfo,
 }
 
+// TODO: Better name?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessAction {
+    TERM,
+    STOP,
+    KILL,
+    CONT,
+}
+
 /// Convenience struct for displaying running applications and
 /// displaying a "System Processes" item.
 #[derive(Debug, Clone)]
