@@ -1,0 +1,33 @@
+{
+  description = "Test";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        buildInputs = [ pkgs.cargo ];
+      in
+      {
+        formatter = pkgs.nixpkgs-fmt;
+        packages = with pkgs; {
+          default = stdenv.mkDerivation {
+            inherit buildInputs;
+            name = "test";
+            src = ./.;
+            buildPhase = ''
+              cargo build --release
+            '';
+            installPhase = ''
+              mkdir -p $out/bin
+              cp target/release/nix_rs_test $out/bin/test
+            '';
+
+          };
+        };
+      });
+}

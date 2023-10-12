@@ -9,8 +9,8 @@ opt-level = 1
 
 [profile.release]
 opt-level = 3
-strip = true
-lto = true
+strip = false
+debug = true
 
 [dependencies]
 async-std = { version = "1.12.0", features = ["attributes"] }
@@ -34,7 +34,7 @@ uzers = "0.11.3"
 plotters = { version = "0.3.4", default_features = false, features = [
     "area_series",
 ] }
-plotters-cairo = { git = "https://github.com/nokyan/plotters-cairo", branch = "cairo-rs-0.18" }
+plotters-cairo = { path = "plotters-cairo" }
 serde = { version = "1.0.180", features = ["serde_derive"] }
 rmp-serde = "1.1.2"
 async-process = "1.7.0"
